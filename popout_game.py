@@ -279,9 +279,26 @@ class PopOutGame:
             print("\nIt's a draw!")
         print()
 
-    def get_board_flat(self) -> list[int]:
+    def get_board_flat(self) -> list:
         """Flat list of board cells (row-major) for ML/dataset use."""
         return [cell for row in self.board for cell in row]
+
+    def encode_state(self) -> list:
+        """
+        Encode the board from the CURRENT PLAYER's perspective.
+        own disc = 1, opponent = 2, empty = 0.
+        Returns a flat list of 42 integers (row-major).
+        This perspective-invariant encoding is useful for ML datasets.
+        """
+        p   = self.current_player
+        opp = PLAYER2 if p == PLAYER1 else PLAYER1
+        enc = []
+        for row in self.board:
+            for cell in row:
+                if   cell == p:   enc.append(1)
+                elif cell == opp: enc.append(2)
+                else:             enc.append(0)
+        return enc
 
     def __repr__(self) -> str:
         sym = {EMPTY: '.', PLAYER1: 'X', PLAYER2: 'O'}
