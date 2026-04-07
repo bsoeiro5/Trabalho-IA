@@ -1,272 +1,352 @@
+"""
+Monte Carlo Tree Search (MCTS) for PopOut
+==========================================
+
+Implementation details
+----------------------
+* Four classic MCTS phases: Selection → Expansion → Simulation → Backpropagation.
+* Upper Confidence Bound for Trees (UCT) governs child selection during the
+  Selection phase.
+* win/visit statistics are stored from EACH NODE's current player's perspective.
+  Parent uses  (1 − child.wins/child.visits)  for UCT, which equals the parent's
+  win-rate viewed through that child.
+
+Variants explored
+-----------------
+1. Standard MCTS-UCT            – exploration_constant = √2
+2. High-exploration MCTS        – exploration_constant = 2.5
+3. Low-exploration (greedy)     – exploration_constant = 0.5
+4. Progressive Widening         – max_children limits the branching factor
+5. Heuristic Rollout            – rollout uses simple 1-step look-ahead
+6. UCT-Tuned                    – replaces the exploration term with a tighter bound
+
+UCT formula (standard):
+    UCT(v) = (1 − Q/N) + C · √( ln(N_parent) / N )
+where Q = cumulative wins, N = visits.
+"""
+
 import math
 import random
-from dameo_sub.game import Game
-from dameo_sub.tabuleiro import Tabuleiro
-from dameo_sub.peças import Peças
-from dameo_sub.constants import VERDE, LARANJA
-from copy import deepcopy
+
+from popout_game import PopOutGame, PLAYER1, PLAYER2
 
 
-class Node:
-    def __init__(self, game_state, parent=None, move=None):
-        self.game_state = game_state
-        self.parent = parent
-        self.move = move
-        self.children = []
-        self.wins = 0
-        self.visits = 0
-        self.untried_moves = self._get_untried_moves()
+# ──────────────────────────────────────────────────────────────────────────────
+# Node
+# ──────────────────────────────────────────────────────────────────────────────
 
-    def UCT_select_child(self, exploration_constant):
-        if not self.children:
-            return None
-        
-        # Fórmula UCT: exploitation (wins/visits) + exploration (sqrt(log(parent_visits)/child_visits))
-        return max(self.children,
-                  key=lambda c: (c.wins / c.visits if c.visits > 0 else 0) +
-                               exploration_constant * math.sqrt(math.log(self.visits) / c.visits) if c.visits > 0 else float('inf'))
+class MCTSNode:
+    """
+    A node in the MCTS search tree.
 
-    def add_child(self, move, game_state):
-        child = Node(game_state, parent=self, move=move)
-        self.untried_moves.remove(move)
-        self.children.append(child)
-        return child
+    Attributes
+    ----------
+    game_state   : PopOutGame – game state AT this node (the player in
+                   game_state.current_player is the one who will MOVE next).
+    parent       : MCTSNode | None
+    move         : (move_type, col) that was applied to reach this node.
+    wins         : cumulative reward from THIS NODE's current player's perspective.
+    visits       : total number of times this node was visited.
+    untried_moves: moves not yet expanded into children.
+    """
 
-    def update(self, result):
-        self.visits += 1
-        self.wins += result
+    __slots__ = ('game_state', 'parent', 'move', 'children',
+                 'wins', 'visits', 'untried_moves')
 
-    def is_terminal(self):
-        return self.game_state.tabuleiro.winner() is not None
+    def __init__(self, game_state: PopOutGame,
+                 parent: 'MCTSNode | None' = None,
+                 move: tuple | None = None):
+        self.game_state   = game_state
+        self.parent       = parent
+        self.move         = move
+        self.children: list['MCTSNode'] = []
+        self.wins         = 0.0
+        self.visits       = 0
+        self.untried_moves: list[tuple] = list(game_state.get_all_moves())
 
-    def is_fully_expanded(self):
+    # ── Predicates ──────────────────────────────────────────────────────────
+
+    def is_terminal(self) -> bool:
+        return self.game_state.game_over
+
+    def is_fully_expanded(self) -> bool:
         return len(self.untried_moves) == 0
 
-    def _get_untried_moves(self):
-        # CORREÇÃO: Verificar se há movimentos de captura obrigatórios primeiro
-        moves = []
-        capture_moves = []
-        
-        for piece in self.game_state.tabuleiro.get_all_peças(self.game_state.turn):
-            valid_moves = self.game_state.tabuleiro.get_valid_moves(piece)
-            for move, skip in valid_moves.items():
-                if skip:  # Este é um movimento de captura
-                    capture_moves.append((piece, move, skip))
-                else:
-                    moves.append((piece, move, skip))
-        
-        # Se houver movimentos de captura, apenas eles são válidos
-        if capture_moves:
-            return capture_moves
-        return moves
-    
+    # ── UCT value (from PARENT's perspective) ───────────────────────────────
+
+    def uct_value(self, C: float) -> float:
+        """
+        UCT from the PARENT's perspective:
+            (1 − Q/N) + C · √( ln(parent.N) / N )
+
+        A child with high Q/N means the CHILD's player wins often there —
+        which is BAD for the parent (opponent).  Inverting with (1−Q/N) gives
+        the PARENT's estimated win-rate.
+        """
+        if self.visits == 0:
+            return float('inf')
+        exploitation = 1.0 - (self.wins / self.visits)
+        exploration  = C * math.sqrt(math.log(self.parent.visits) / self.visits)
+        return exploitation + exploration
+
+    def uct_tuned_value(self, C: float) -> float:
+        """
+        UCT-Tuned (Auer et al.): replaces the exploration term with a tighter
+        empirical variance bound.
+
+            (1 − Q/N) + C · √( ln(parent.N)/N · min(1/4, V) )
+
+        where V = variance estimate = Q/N − (Q/N)^2 + √(2·ln(parent.N)/N)
+        """
+        if self.visits == 0:
+            return float('inf')
+        q = self.wins / self.visits
+        variance = q - q * q + math.sqrt(2 * math.log(self.parent.visits) / self.visits)
+        exploitation = 1.0 - q
+        exploration  = C * math.sqrt(math.log(self.parent.visits) / self.visits
+                                     * min(0.25, variance))
+        return exploitation + exploration
+
+    # ── Child selection ─────────────────────────────────────────────────────
+
+    def best_child(self, C: float, use_tuned: bool = False) -> 'MCTSNode':
+        if use_tuned:
+            return max(self.children, key=lambda ch: ch.uct_tuned_value(C))
+        return max(self.children, key=lambda ch: ch.uct_value(C))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MCTS
+# ──────────────────────────────────────────────────────────────────────────────
+
 class MCTS:
-    def __init__(self, iterations=1000, simulation_depth=20, exploration_constant=1.4):
-        self.iterations = iterations
-        self.simulation_depth = simulation_depth
+    """
+    Monte Carlo Tree Search for PopOut.
+
+    Parameters
+    ----------
+    iterations          : int   – search budget (number of tree walk-downs).
+    exploration_constant: float – C in UCT; higher → more exploration.
+    max_children        : int|None – progressive widening: cap on children per node.
+    rollout_strategy    : str   – 'random' | 'heuristic'.
+    use_tuned_uct       : bool  – use UCT-Tuned instead of standard UCT.
+    name                : str   – human-readable label for reporting.
+    """
+
+    def __init__(self,
+                 iterations: int = 1000,
+                 exploration_constant: float = math.sqrt(2),
+                 max_children: int | None = None,
+                 rollout_strategy: str = 'random',
+                 use_tuned_uct: bool = False,
+                 name: str = 'MCTS'):
+        self.iterations           = iterations
         self.exploration_constant = exploration_constant
-        self.nodes_expanded = 0
-        self.simulations_run = 0
-        print(f"MCTS inicializado: {iterations} iterações, {simulation_depth} profundidade, {exploration_constant} const. exploração")
+        self.max_children         = max_children
+        self.rollout_strategy     = rollout_strategy
+        self.use_tuned_uct        = use_tuned_uct
+        self.name                 = name
 
-    def get_move(self, game):
-        capture_moves = self._get_capture_moves(game)
-        
-        if capture_moves:
-            print(f"IA: Encontrei {len(capture_moves)} movimentos de captura obrigatórios")
-            root = Node(game)
-            root.untried_moves = capture_moves
-            
-            # Execute MCTS para escolher o melhor movimento de captura
-            for i in range(self.iterations):
-                if i % 100 == 0:
-                    print(f"MCTS: iteração {i}/{self.iterations}")
-                
-                node = self._select(root)
-                if not node.is_terminal():
-                    node = self._expand(node)
-                    reward = self._simulate(node)
-                    self._backpropagate(node, reward)
+    # ── Public API ──────────────────────────────────────────────────────────
 
-            if not root.children:
-                return None
+    def get_best_move(self, game_state: PopOutGame) -> tuple | None:
+        """
+        Run MCTS from `game_state` and return the best (move_type, col).
+        Uses the *robust child* policy: most-visited child at the root.
+        """
+        root = MCTSNode(game_state)
 
-            best_child = max(root.children, key=lambda c: c.visits)
-            chosen_move = best_child.move
-            
-            # Após executar o movimento, verificar se há mais capturas disponíveis
-            peca, novo_pos, skip = chosen_move
-            return chosen_move, True  # Retorna o movimento e um flag indicando que é uma captura
-        else:
-            root = Node(game)
-            
-            # MCTS normal para movimentos não-captura
-            for i in range(self.iterations):
-                if i % 100 == 0:
-                    print(f"MCTS: iteração {i}/{self.iterations}")
-                
-                node = self._select(root)
-                if not node.is_terminal():
-                    node = self._expand(node)
-                    reward = self._simulate(node)
-                    self._backpropagate(node, reward)
+        for _ in range(self.iterations):
+            leaf   = self._select(root)
+            if not leaf.is_terminal():
+                leaf = self._expand(leaf)
+            result = self._simulate(leaf)
+            self._backpropagate(leaf, result)
 
-            if not root.children:
-                return None, False
+        if not root.children:
+            moves = game_state.get_all_moves()
+            return random.choice(moves) if moves else None
 
-            best_child = max(root.children, key=lambda c: c.visits)
-            return best_child.move, False  # Retorna o movimento e indica que não é captura
+        return max(root.children, key=lambda ch: ch.visits).move
 
-    def _get_capture_moves(self, game):
-        """Retorna todos os movimentos de captura disponíveis"""
-        capture_moves = []
-        for piece in game.tabuleiro.get_all_peças(game.turn):
-            valid_moves = game.tabuleiro.get_valid_moves(piece)
-            for move, skip in valid_moves.items():
-                if skip:  # Este é um movimento de captura
-                    capture_moves.append((piece, move, skip))
-        return capture_moves
+    def get_move_stats(self, game_state: PopOutGame) -> dict:
+        """
+        Run MCTS and return a dict with per-child statistics for analysis.
+        """
+        root = MCTSNode(game_state)
+        for _ in range(self.iterations):
+            leaf   = self._select(root)
+            if not leaf.is_terminal():
+                leaf = self._expand(leaf)
+            result = self._simulate(leaf)
+            self._backpropagate(leaf, result)
 
-    def _select(self, node):
+        stats = {}
+        for ch in root.children:
+            stats[ch.move] = {
+                'visits'  : ch.visits,
+                'win_rate': ch.wins / ch.visits if ch.visits else 0.0,
+            }
+        return stats
+
+    # ── Phase 1 – Selection ─────────────────────────────────────────────────
+
+    def _select(self, node: MCTSNode) -> MCTSNode:
+        """Descend the tree following UCT until a non-fully-expanded or terminal node."""
         while not node.is_terminal() and node.is_fully_expanded():
-            child = node.UCT_select_child(self.exploration_constant)
-            if child is None:
+            node = node.best_child(self.exploration_constant, self.use_tuned_uct)
+        return node
+
+    # ── Phase 2 – Expansion ─────────────────────────────────────────────────
+
+    def _expand(self, node: MCTSNode) -> MCTSNode:
+        """
+        Add one new child for a random untried move.
+
+        With progressive widening (max_children is set), expansion stops once
+        the limit is reached and UCT traversal continues on existing children.
+        """
+        if not node.untried_moves:
+            return node
+
+        # Progressive widening: stop expanding when limit is hit
+        if (self.max_children is not None
+                and len(node.children) >= self.max_children):
+            return (node.best_child(self.exploration_constant, self.use_tuned_uct)
+                    if node.children else node)
+
+        move      = random.choice(node.untried_moves)
+        new_state = node.game_state.apply_move(*move)
+
+        if new_state is None:
+            node.untried_moves.remove(move)
+            return self._expand(node)
+
+        child = MCTSNode(new_state, parent=node, move=move)
+        node.untried_moves.remove(move)
+        node.children.append(child)
+        return child
+
+    # ── Phase 3 – Simulation (Rollout) ──────────────────────────────────────
+
+    def _simulate(self, node: MCTSNode) -> float:
+        """
+        Roll out a game from node's state using the chosen policy.
+        Returns reward ∈ {0.0, 0.5, 1.0} from the perspective of the player
+        who is to move AT `node`.
+        """
+        state  = node.game_state._copy()
+        player = node.game_state.current_player
+        steps  = 0
+        max_steps = 200    # safety cap against infinite cycles
+
+        while not state.game_over and steps < max_steps:
+            moves = state.get_all_moves()
+            if not moves:
                 break
-            node = child
-        return node
 
-    def _expand(self, node):
-        self.nodes_expanded += 1
-        if node.untried_moves:
-            move = random.choice(node.untried_moves)
-            new_state = self._copy_game_state(node.game_state)
-            
-            # Aplicar o movimento no novo estado
-            peca, novo_pos, skip = move
-            
-            # Obter a peça correspondente no novo tabuleiro
-            new_peca = new_state.tabuleiro.get_peça(peca.linha, peca.coluna)
-            
-            # Realizar o movimento
-            new_state.tabuleiro.movimento(new_peca, novo_pos[0], novo_pos[1])
-            
-            # Remover peças capturadas
-            if skip:
-                # Converter os objetos de peça para peças no novo tabuleiro
-                new_skips = []
-                for s in skip:
-                    new_skips.append(new_state.tabuleiro.get_peça(s.linha, s.coluna))
-                new_state.tabuleiro.remove(new_skips)
-            
-            new_state.change_turn()
-            
-            child = node.add_child(move, new_state)
-            return child
-        return node
-
-    def _simulate(self, node):
-        self.simulations_run += 1
-        state = self._copy_game_state(node.game_state)
-        depth = 0
-        original_turn = state.turn
-        
-        while depth < self.simulation_depth:
-            winner = state.tabuleiro.winner()
-            if winner:
-                if (winner == 'VERDE' and original_turn == VERDE) or \
-                   (winner == 'LARANJA' and original_turn == LARANJA):
-                    return 1.0
-                else:
-                    return 0.0
-            
-            # Verificar movimentos obrigatórios de captura primeiro
-            capture_moves = []
-            for piece in state.tabuleiro.get_all_peças(state.turn):
-                valid_moves = state.tabuleiro.get_valid_moves(piece)
-                for move, skip in valid_moves.items():
-                    if skip:  # É um movimento de captura
-                        capture_moves.append((piece, move, skip))
-            
-            if capture_moves:  # Se existem capturas obrigatórias
-                # Escolher uma captura aleatória
-                piece, move, skip = random.choice(capture_moves)
-                
-                # Realizar a captura
-                state.tabuleiro.movimento(piece, move[0], move[1])
-                state.tabuleiro.remove(skip)
-                
-                # Verificar se a mesma peça pode continuar capturando
-                more_captures = False
-                new_piece = state.tabuleiro.get_peça(move[0], move[1])
-                valid_moves = state.tabuleiro.get_valid_moves(new_piece)
-                
-                for next_move, next_skip in valid_moves.items():
-                    if next_skip:  # Há mais capturas disponíveis
-                        more_captures = True
-                        break
-                
-                if more_captures:
-                    continue  # Não muda o turno, continua com a mesma peça
+            if self.rollout_strategy == 'heuristic':
+                move = self._heuristic_select(state, moves)
             else:
-                # Se não há capturas, faz um movimento normal
-                valid_moves = self._get_valid_moves(state)
-                if not valid_moves:
+                move = random.choice(moves)
+
+            nxt = state.apply_move(*move)
+            if nxt is None:
+                moves = [m for m in moves if m != move]
+                if not moves:
                     break
-                    
-                piece, move, skip = random.choice(valid_moves)
-                state.tabuleiro.movimento(piece, move[0], move[1])
-            
-            # Só muda o turno se não houver mais capturas disponíveis
-            state.change_turn()
-            depth += 1
-        
-        return self._evaluate_state(state, original_turn)
+                continue
+            state = nxt
+            steps += 1
 
-    def _evaluate_state(self, state, original_turn):
-        # Usar a heurística implementada no tabuleiro
-        score = state.tabuleiro.heuristica()
-        
-        # Ajustar o score baseado no turno original
-        if original_turn == LARANJA:
-            score = -score
-            
-        # Normalizar entre 0 e 1 usando sigmoid
-        return 1 / (1 + math.exp(-score/10))
+        if state.winner == player:
+            return 1.0
+        if state.winner is None:
+            return 0.5   # draw or depth-limit reached
+        return 0.0
 
-    def _backpropagate(self, node, reward):
-        while node:
-            node.update(reward)
+    def _heuristic_select(self, state: PopOutGame,
+                          moves: list[tuple]) -> tuple:
+        """
+        One-step look-ahead rollout policy:
+        1. Take an immediate win.
+        2. Block an immediate opponent win.
+        3. Otherwise pick randomly.
+        """
+        player   = state.current_player
+        opponent = PLAYER2 if player == PLAYER1 else PLAYER1
+
+        for move in moves:
+            s = state.apply_move(*move)
+            if s and s.winner == player:
+                return move
+
+        for move in moves:
+            s = state.apply_move(*move)
+            if s and s.winner == opponent:
+                return move
+
+        return random.choice(moves)
+
+    # ── Phase 4 – Backpropagation ────────────────────────────────────────────
+
+    def _backpropagate(self, node: MCTSNode, result: float) -> None:
+        """
+        Walk from `node` to the root, updating visit counts and win sums.
+        The result is alternated at each level (opponent's perspective = 1−result).
+        """
+        while node is not None:
+            node.visits += 1
+            node.wins   += result
+            result = 1.0 - result    # flip for the parent's perspective
             node = node.parent
-            # Inverter a recompensa para o próximo nível
-            reward = 1 - reward
 
-    def _get_valid_moves(self, game):
-        moves = []
-        for peca in game.tabuleiro.get_all_peças(game.turn):
-            valid_moves = game.tabuleiro.get_valid_moves(peca)
-            for move, skip in valid_moves.items():
-                moves.append((peca, move, skip))
-        return moves
 
-    def _copy_game_state(self, game):
-        new_game = type(game)(game.win, game.LINHAS)  # Pass LINHAS to the Game constructor
-        new_game.turn = game.turn
-        new_game.selected = None
-        new_game.valid_moves = {}
-        
-        # Copiar tabuleiro
-        new_game.tabuleiro = Tabuleiro(game.LINHAS)  # Pass LINHAS to Tabuleiro constructor
-        new_game.tabuleiro.board = [[self._copy_peca(peca, game.TAMANHO_QUADRADO) for peca in row] for row in game.tabuleiro.board]
-        new_game.tabuleiro.verdes_left = game.tabuleiro.verdes_left
-        new_game.tabuleiro.laranjas_left = game.tabuleiro.laranjas_left
-        new_game.tabuleiro.verdes_kings = game.tabuleiro.verdes_kings
-        new_game.tabuleiro.laranjas_kings = game.tabuleiro.laranjas_kings
-        
-        return new_game
+# ──────────────────────────────────────────────────────────────────────────────
+# Factory helpers for the experiments section
+# ──────────────────────────────────────────────────────────────────────────────
 
-    def _copy_peca(self, peca, tamanho_quadrado):
-        if peca == 0:
-            return 0
-        new_peca = Peças(peca.linha, peca.coluna, peca.cor, tamanho_quadrado)
-        new_peca.king = peca.king
-        return new_peca
+def make_standard_mcts(iterations: int = 1000) -> MCTS:
+    """Standard MCTS with UCT (C = √2)."""
+    return MCTS(iterations=iterations,
+                exploration_constant=math.sqrt(2),
+                name='MCTS-Standard')
+
+
+def make_high_exploration_mcts(iterations: int = 1000) -> MCTS:
+    """High-exploration MCTS (C = 2.5) — broader tree, shallower."""
+    return MCTS(iterations=iterations,
+                exploration_constant=2.5,
+                name='MCTS-HighExploration')
+
+
+def make_low_exploration_mcts(iterations: int = 1000) -> MCTS:
+    """Low-exploration / greedy MCTS (C = 0.5) — exploits more, explores less."""
+    return MCTS(iterations=iterations,
+                exploration_constant=0.5,
+                name='MCTS-LowExploration')
+
+
+def make_progressive_widening_mcts(iterations: int = 1000,
+                                   max_children: int = 4) -> MCTS:
+    """Progressive widening: limit children per node to reduce branching."""
+    return MCTS(iterations=iterations,
+                exploration_constant=math.sqrt(2),
+                max_children=max_children,
+                name=f'MCTS-PW({max_children})')
+
+
+def make_heuristic_mcts(iterations: int = 1000) -> MCTS:
+    """MCTS with one-step look-ahead rollout instead of pure random."""
+    return MCTS(iterations=iterations,
+                exploration_constant=math.sqrt(2),
+                rollout_strategy='heuristic',
+                name='MCTS-Heuristic')
+
+
+def make_tuned_uct_mcts(iterations: int = 1000) -> MCTS:
+    """UCT-Tuned: tighter exploration bound using empirical variance."""
+    return MCTS(iterations=iterations,
+                exploration_constant=math.sqrt(2),
+                use_tuned_uct=True,
+                name='MCTS-UCT-Tuned')
