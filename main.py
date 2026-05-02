@@ -1,9 +1,81 @@
 import pygame
 import sys
 import math
+import os
+import csv
+import random
 from popout_game import PopOutGame, PLAYER1, PLAYER2, EMPTY
 from mcts import (make_standard_mcts, make_heuristic_mcts,
                   make_progressive_widening_mcts, make_high_exploration_mcts)
+from decision_tree import ID3Tree
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ID3 Player (wraps a trained ID3 tree to look like an MCTS player)
+# ──────────────────────────────────────────────────────────────────────────────
+
+DATASET_CSV   = os.path.join('datasets', 'popout_dataset.csv')
+FEATURE_NAMES = [f'cell_{r}_{c}' for r in range(6) for c in range(7)]
+
+
+def _parse_move_label(label: str) -> tuple | None:
+    """Convert 'drop_3' / 'pop_1' into ('drop', 3) / ('pop', 1)."""
+    try:
+        mtype, col = label.split('_')
+        return (mtype, int(col))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _load_dataset(path: str = DATASET_CSV):
+    if not os.path.exists(path):
+        return None, None
+    X, y = [], []
+    with open(path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f); next(reader)
+        for row in reader:
+            X.append([int(v) for v in row[:-1]])
+            y.append(row[-1])
+    return X, y
+
+
+class ID3Player:
+    """
+    Adapter that exposes `get_best_move(game)` like an MCTS instance, but
+    delegates to a trained ID3 tree. If the predicted move is illegal in the
+    current game state, falls back to a uniformly random legal move.
+    """
+    def __init__(self, tree: ID3Tree, name: str = 'ID3-Tree'):
+        self.tree = tree
+        self.name = name
+        self.fallback_count = 0
+        self.move_count = 0
+
+    @classmethod
+    def from_dataset(cls, path: str = DATASET_CSV,
+                     max_depth: int = 15,
+                     min_samples_split: int = 5) -> 'ID3Player':
+        X, y = _load_dataset(path)
+        if X is None:
+            raise FileNotFoundError(
+                f'Dataset não encontrado em {path}. '
+                f'Corra `python generate_dataset.py` primeiro.')
+        tree = ID3Tree(max_depth=max_depth,
+                       min_samples_split=min_samples_split)
+        tree.fit(X, y, attribute_names=FEATURE_NAMES, continuous_attrs=set())
+        return cls(tree)
+
+    def get_best_move(self, game: PopOutGame):
+        self.move_count += 1
+        legal = game.get_all_moves()
+        if not legal:
+            return None
+        pred = self.tree.predict_one(game.encode_state())
+        move = _parse_move_label(pred) if isinstance(pred, str) else None
+        if move in legal:
+            return move
+        self.fallback_count += 1
+        return random.choice(legal)
 
 # --- Configurações Visuais ---
 SQUARESIZE = 90
@@ -392,36 +464,45 @@ def main():
             ai_choice = gui.get_menu_choice("Escolha o Algoritmo de IA",
                                         ["Standard MCTS",
                                             "Heuristic MCTS",
-                                            "Progressive Widening"], can_go_back=True)
-            
+                                            "Progressive Widening",
+                                            "ID3 (Árvore de Decisão)"], can_go_back=True)
+
             if ai_choice == -1: continue  #volta ao menu principal
 
-            algos = {
-                1: make_standard_mcts(1000),
-                2: make_heuristic_mcts(1000),
-                3: make_progressive_widening_mcts(1000),
-            }
+            try:
+                algos = {
+                    1: lambda: make_standard_mcts(1000),
+                    2: lambda: make_heuristic_mcts(1000),
+                    3: lambda: make_progressive_widening_mcts(1000),
+                    4: lambda: ID3Player.from_dataset(),
+                }
+                ai_instance = algos[ai_choice]()
+            except FileNotFoundError as exc:
+                print(f'[ERRO] {exc}')
+                continue
+
             side = gui.get_menu_choice("Jogar como?",
                                     ["Jogador 1 (X — Vermelho)",
                                         "Jogador 2 (O — Amarelo)"], can_go_back=True)
             if side == -1: continue
 
             if side == 1:
-                gui.play(None, algos[ai_choice])
+                gui.play(None, ai_instance)
             else:
-                gui.play(algos[ai_choice], None)
+                gui.play(ai_instance, None)
 
         elif mode == 3:
-            c1 = gui.get_menu_choice("IA para Jogador 1 (X)",
-                                    ["Standard MCTS", "Heuristic MCTS",
-                                    "High Exploration", "Prog. Widening"], can_go_back=True)
+            ai_options = ["Standard MCTS", "Heuristic MCTS",
+                          "High Exploration", "Prog. Widening",
+                          "ID3 (Árvore de Decisão)"]
+            c1 = gui.get_menu_choice("IA para Jogador 1 (X)", ai_options, can_go_back=True)
             if c1 == -1: continue
-            c2 = gui.get_menu_choice("IA para Jogador 2 (O)",
-                                    ["Standard MCTS", "Heuristic MCTS",
-                                    "High Exploration", "Prog. Widening"], can_go_back=True)
+            c2 = gui.get_menu_choice("IA para Jogador 2 (O)", ai_options, can_go_back=True)
             if c2 == -1: continue
 
             def pick(c):
+                if c == 5:
+                    return ID3Player.from_dataset()
                 return {
                     1: make_standard_mcts(500),
                     2: make_heuristic_mcts(500),
@@ -429,7 +510,12 @@ def main():
                     4: make_progressive_widening_mcts(500),
                 }[c]
 
-            gui.play(pick(c1), pick(c2))
+            try:
+                p1 = pick(c1); p2 = pick(c2)
+            except FileNotFoundError as exc:
+                print(f'[ERRO] {exc}')
+                continue
+            gui.play(p1, p2)
 
 
 if __name__ == '__main__':

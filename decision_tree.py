@@ -134,11 +134,20 @@ class ID3Tree:
         """Profundidade real da árvore (0 = apenas raiz/folha)."""
         return self._tree_depth(self.tree)
 
+    # alias para compatibilidade com código que usa `get_depth()`
+    get_depth = depth
+
     # ── Visualização ────────────────────────────────────────────────────────
 
-    def print_tree(self, max_levels: int | None = None) -> None:
-        """Imprime a árvore de forma legível no terminal."""
-        self._print_node(self.tree, indent=0, branch_label='', max_levels=max_levels)
+    def print_tree(self, max_levels: int | None = None,
+                   max_depth: int | None = None) -> None:
+        """
+        Imprime a árvore de forma legível no terminal.
+
+        max_levels e max_depth são aliases (qualquer um pode ser passado).
+        """
+        limit = max_depth if max_depth is not None else max_levels
+        self._print_node(self.tree, indent=0, branch_label='', max_levels=limit)
 
     # ── Internos — construção ───────────────────────────────────────────────
 

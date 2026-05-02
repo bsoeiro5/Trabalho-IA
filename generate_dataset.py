@@ -6,11 +6,13 @@ O dataset é guardado em datasets/popout_dataset.csv e pode ser usado para trein
 uma árvore de decisão ID3.
 
 Uso:
-    python generate_dataset.py [n_games] [mcts_iterations]
+    python generate_dataset.py [n_games] [mcts_iterations] [variant] [output]
 
 Exemplos:
-    python generate_dataset.py          # 100 jogos, 400 iterações
-    python generate_dataset.py 200 600  # 200 jogos, 600 iterações
+    python generate_dataset.py                         # 100 jogos, 400 iterações, heuristic
+    python generate_dataset.py 200 600                 # 200 jogos, 600 iterações, heuristic
+    python generate_dataset.py 300 1500 standard       # 300 jogos, 1500 iter, standard MCTS
+    python generate_dataset.py 300 1500 standard datasets/popout_standard.csv
 
 Formato do CSV:
     cell_0_0, cell_0_1, ..., cell_5_6, move
@@ -20,6 +22,7 @@ Formato do CSV:
 
 import csv
 import math
+import random
 import sys
 import time
 import os
@@ -33,25 +36,45 @@ from mcts import make_heuristic_mcts, make_standard_mcts
 OUTPUT_CSV    = os.path.join('datasets', 'popout_dataset.csv')
 N_GAMES       = 100
 MCTS_ITERS    = 400
+VARIANT       = 'heuristic'
 FEATURE_NAMES = [f'cell_{r}_{c}' for r in range(6) for c in range(7)]
+
+VARIANTS = {
+    'heuristic': make_heuristic_mcts,
+    'standard':  make_standard_mcts,
+}
 
 
 def generate(n_games: int = N_GAMES,
              mcts_iterations: int = MCTS_ITERS,
-             output_csv: str = OUTPUT_CSV) -> int:
+             output_csv: str = OUTPUT_CSV,
+             variant: str = VARIANT,
+             seed: int | None = 42) -> int:
     """
     Gera o dataset e devolve o número de amostras gravadas.
 
-    Estratégia: ambos os jogadores usam MCTS heurístico para gerar jogadas
-    de maior qualidade do que o random puro.  O estado é codificado da
-    perspetiva do jogador atual para tornar o dataset invariante ao jogador.
+    Parameters
+    ----------
+    variant : 'heuristic' ou 'standard' — controla a política do MCTS
+              que joga ambos os lados em self-play.
+    seed    : seed do RNG para reprodutibilidade (None desactiva).
+
+    O estado é codificado da perspetiva do jogador atual para tornar o
+    dataset invariante ao jogador.
     """
+    if variant not in VARIANTS:
+        raise ValueError(f"variant deve ser um de {list(VARIANTS)}; recebi {variant!r}")
+
+    if seed is not None:
+        random.seed(seed)
+
     os.makedirs(os.path.dirname(output_csv), exist_ok=True)
 
-    ai = make_heuristic_mcts(iterations=mcts_iterations)
+    ai = VARIANTS[variant](iterations=mcts_iterations)
     rows = []
 
-    print(f"A gerar {n_games} jogos com {mcts_iterations} iterações MCTS…")
+    print(f"A gerar {n_games} jogos com {mcts_iterations} iterações MCTS "
+          f"({variant}, seed={seed})…")
     t0 = time.time()
 
     for game_idx in range(n_games):
@@ -97,4 +120,7 @@ def generate(n_games: int = N_GAMES,
 if __name__ == '__main__':
     n_games = int(sys.argv[1]) if len(sys.argv) > 1 else N_GAMES
     iters   = int(sys.argv[2]) if len(sys.argv) > 2 else MCTS_ITERS
-    generate(n_games=n_games, mcts_iterations=iters)
+    variant = sys.argv[3]      if len(sys.argv) > 3 else VARIANT
+    out_csv = sys.argv[4]      if len(sys.argv) > 4 else OUTPUT_CSV
+    generate(n_games=n_games, mcts_iterations=iters,
+             output_csv=out_csv, variant=variant)
