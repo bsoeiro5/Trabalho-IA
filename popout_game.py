@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 PopOut Game Implementation
 ==========================
@@ -154,6 +156,11 @@ class PopOutGame:
             else:
                 self.winner = PLAYER2
             self.game_over = True
+            # Switch current_player so it represents "who would move next".
+            # This ensures MCTS stores statistics from the opponent's perspective,
+            # making (1 − child.wins/child.visits) correctly reflect the parent's
+            # win-rate. Without this, winning moves appear bad to the selector.
+            self.current_player = PLAYER2 if self.current_player == PLAYER1 else PLAYER1
         else:
             self._switch_player()
 
@@ -165,6 +172,7 @@ class PopOutGame:
             # players, the player who popped wins.
             self.winner = self.current_player
             self.game_over = True
+            self.current_player = PLAYER2 if self.current_player == PLAYER1 else PLAYER1
         else:
             self._switch_player()
 

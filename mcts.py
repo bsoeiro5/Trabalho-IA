@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Monte Carlo Tree Search (MCTS) for PopOut
 ==========================================
