@@ -168,9 +168,17 @@ class PopOutGame:
         p1 = self._check_four_in_row(PLAYER1)
         p2 = self._check_four_in_row(PLAYER2)
         if p1 or p2:
-            # Special rule: if the pop simultaneously creates 4-in-a-row for both
-            # players, the player who popped wins.
-            self.winner = self.current_player
+            # Special rule 1: if the pop creates 4-in-a-row for BOTH players
+            # simultaneously, the player who popped wins (the opponent's line
+            # is ignored). If only one player has a 4-in-a-row, that player
+            # wins — even if it is the opponent (a pop can complete the
+            # opponent's line by dropping discs down).
+            if p1 and p2:
+                self.winner = self.current_player
+            elif p1:
+                self.winner = PLAYER1
+            else:
+                self.winner = PLAYER2
             self.game_over = True
             self.current_player = PLAYER2 if self.current_player == PLAYER1 else PLAYER1
         else:
