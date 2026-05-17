@@ -363,7 +363,16 @@ class PopOutGUI:
                 if ai1 and ai2:
                     break
 
-            current_ai = ai1 if game.current_player == PLAYER1 else ai2
+            if game.is_board_full():
+                if current_ai is None:
+                    choice = self.get_menu_choice(
+                        "Tabuleiro cheio! O que deseja fazer?",
+                        ["Fazer Pop (continuar)", "Declarar Empate"],
+                        can_go_back=False
+                    )
+                    if choice == 2:
+                        break
+                pop_mode = True
 
             if current_ai:
                 pygame.time.wait(400)
