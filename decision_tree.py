@@ -1,4 +1,4 @@
-from __future__ import annotationssim
+from __future__ import annotations
 import math
 from collections import Counter
 
@@ -25,28 +25,22 @@ class ID3Tree:
 
 
     def predict_one(self, example: list) -> object:
-        """Classifica um único exemplo percorrendo a árvore."""
         return self._traverse(self.tree, example)
 
     def predict(self, data: list) -> list:
-        """Classifica uma lista de exemplos."""
         return [self.predict_one(row) for row in data]
 
     # ── Métricas ────────────────────────────────────────────────────────────
 
     @staticmethod
     def accuracy(y_true: list, y_pred: list) -> float:
-        """Fraction of correctly classified examples."""
         if not y_true:
             return 0.0
         return sum(a == b for a, b in zip(y_true, y_pred)) / len(y_true)
 
     @staticmethod
     def precision_recall_f1(y_true: list, y_pred: list) -> tuple[float, float, float]:
-        """
-        Precision, recall e F1-score com média macro entre classes.
-        Retorna (precision, recall, f1).
-        """
+
         classes = sorted(set(y_true) | set(y_pred))
         precs, recs = [], []
         for cls in classes:
