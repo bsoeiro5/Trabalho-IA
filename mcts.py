@@ -1,32 +1,5 @@
 from __future__ import annotations
 
-"""
-Monte Carlo Tree Search (MCTS) for PopOut
-==========================================
-
-Implementation details
-----------------------
-* Four classic MCTS phases: Selection → Expansion → Simulation → Backpropagation.
-* Upper Confidence Bound for Trees (UCT) governs child selection during the
-  Selection phase.
-* win/visit statistics are stored from EACH NODE's current player's perspective.
-  Parent uses  (1 − child.wins/child.visits)  for UCT, which equals the parent's
-  win-rate viewed through that child.
-
-Variants explored
------------------
-1. Standard MCTS-UCT            – exploration_constant = √2
-2. High-exploration MCTS        – exploration_constant = 2.5
-3. Low-exploration (greedy)     – exploration_constant = 0.5
-4. Progressive Widening         – max_children limits the branching factor
-5. Heuristic Rollout            – rollout uses simple 1-step look-ahead
-6. UCT-Tuned                    – replaces the exploration term with a tighter bound
-
-UCT formula (standard):
-    UCT(v) = (1 − Q/N) + C · √( ln(N_parent) / N )
-where Q = cumulative wins, N = visits.
-"""
-
 import math
 import random
 

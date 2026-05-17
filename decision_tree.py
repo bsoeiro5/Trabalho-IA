@@ -1,52 +1,9 @@
 from __future__ import annotations
 
-"""
-ID3 Decision Tree
-=================
-Implementação do algoritmo ID3 (Iterative Dichotomiser 3) de raiz,
-sem recurso a scikit-learn ou outras bibliotecas de ML.
-
-Funcionalidades
----------------
-* Suporte a atributos categóricos (standard ID3) e contínuos (com corte ótimo
-  por maximização de ganho de informação, estilo C4.5).
-* Parâmetros de regularização: max_depth e min_samples_split.
-* Métricas de avaliação: accuracy, precision, recall e F1-score (macro).
-* Visualização textual da árvore.
-* Contagem de nós.
-
-Uso rápido
-----------
-    from decision_tree import ID3Tree
-
-    tree = ID3Tree(max_depth=5)
-    tree.fit(X_train, y_train,
-             attribute_names=['a', 'b', 'c'],
-             continuous_attrs={0, 2})   # índices dos atributos contínuos
-    preds = tree.predict(X_test)
-    acc   = ID3Tree.accuracy(y_test, preds)
-"""
-
 import math
 from collections import Counter
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Árvore ID3
-# ──────────────────────────────────────────────────────────────────────────────
-
 class ID3Tree:
-    """
-    Árvore de decisão construída pelo algoritmo ID3 com extensão para
-    atributos contínuos (corte binário por melhor threshold).
-
-    Parameters
-    ----------
-    max_depth : object
-        Profundidade máxima da árvore. None = sem limite.
-    min_samples_split : int
-        Número mínimo de amostras para efetuar uma divisão.
-    """
 
     def __init__(self, max_depth: int | None = None, min_samples_split: int = 2):
         self.max_depth         = max_depth
@@ -60,23 +17,13 @@ class ID3Tree:
     def fit(self, data: list, labels: list,
             attribute_names: list | None = None,
             continuous_attrs: set | None = None) -> 'ID3Tree':
-        """
-        Treina a árvore com os dados fornecidos.
 
-        Parameters
-        ----------
-        data             : lista de exemplos (cada um é uma lista de valores).
-        labels           : lista de rótulos/classes correspondentes.
-        attribute_names  : nomes opcionais dos atributos.
-        continuous_attrs : conjunto de índices de atributos com valores contínuos.
-        """
         n_attrs = len(data[0]) if data else 0
         self.attributes       = attribute_names or [f'attr_{i}' for i in range(n_attrs)]
         self.continuous_attrs = continuous_attrs or set()
         self.tree = self._build(data, labels, list(range(n_attrs)), depth=0)
         return self
 
-    # ── Predição ────────────────────────────────────────────────────────────
 
     def predict_one(self, example: list) -> object:
         """Classifica um único exemplo percorrendo a árvore."""

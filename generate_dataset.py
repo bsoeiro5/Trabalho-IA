@@ -1,27 +1,5 @@
 from __future__ import annotations
 
-"""
-PopOut Dataset Generator
-========================
-Gera um dataset de pares (estado, jogada) jogando partidas de self-play com MCTS.
-O dataset é guardado em datasets/popout_dataset.csv e pode ser usado para treinar
-uma árvore de decisão ID3.
-
-Uso:
-    python generate_dataset.py [n_games] [mcts_iterations] [variant] [output]
-
-Exemplos:
-    python generate_dataset.py                         # 100 jogos, 400 iterações, heuristic
-    python generate_dataset.py 200 600                 # 200 jogos, 600 iterações, heuristic
-    python generate_dataset.py 300 1500 standard       # 300 jogos, 1500 iter, standard MCTS
-    python generate_dataset.py 300 1500 standard datasets/popout_standard.csv
-
-Formato do CSV:
-    cell_0_0, cell_0_1, ..., cell_5_6, move
-    - cell_r_c ∈ {0, 1, 2}  (0=vazio, 1=própria peça, 2=peça adversária)
-    - move ∈ {'drop_0', ..., 'drop_6', 'pop_0', ..., 'pop_6'}
-"""
-
 import csv
 import math
 import random

@@ -1,33 +1,5 @@
 from __future__ import annotations
 
-"""
-PopOut Game Implementation
-==========================
-PopOut is a variant of Connect-4 where players can also 'pop out' their own
-discs from the bottom row in addition to dropping discs from the top.
-
-Board layout:
-  - Row 0 = TOP (gravity is downward, so discs fall to the highest available row)
-  - Row ROWS-1 = BOTTOM
-
-Moves:
-  - Drop ('drop', col): place a disc at the top of column col; it falls to the
-    lowest empty cell in that column.
-  - Pop  ('pop',  col): remove OWN disc from the bottom row of column col;
-    every disc above it shifts down one position.
-
-Win condition: 4 consecutive discs in a row (horizontal, vertical, or diagonal).
-
-Special rules:
-  1. Pop & simultaneous 4-in-a-row: if a pop move creates a 4-in-a-row for
-     BOTH players simultaneously, the player who popped wins.
-  2. Full board: if the board is completely full and the current player has no
-     pop moves, the game can be declared a draw. If there are pop moves the
-     player may choose to pop or declare a draw.
-  3. Repetition: if the same board state (including whose turn it is) repeats
-     three times, either player can declare the game a draw.
-"""
-
 EMPTY   = 0
 PLAYER1 = 1   # represented as 'X'
 PLAYER2 = 2   # represented as 'O'

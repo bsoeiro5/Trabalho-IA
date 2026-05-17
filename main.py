@@ -10,9 +10,6 @@ from mcts import (make_standard_mcts, make_heuristic_mcts,
 from decision_tree import ID3Tree
 1
 
-# ──────────────────────────────────────────────────────────────────────────────
-# ID3 Player (wraps a trained ID3 tree to look like an MCTS player)
-# ──────────────────────────────────────────────────────────────────────────────
 
 DATASET_CSV   = os.path.join('datasets', 'popout_dataset.csv')
 FEATURE_NAMES = [f'cell_{r}_{c}' for r in range(6) for c in range(7)]
@@ -77,7 +74,7 @@ class ID3Player:
         self.fallback_count += 1
         return random.choice(legal)
 
-# --- Configurações Visuais ---
+
 SQUARESIZE = 90
 COLS = 7
 ROWS = 6
@@ -91,7 +88,7 @@ HEIGHT = HEADER_H + BOARD_H + FOOTER_H
 RADIUS = int(SQUARESIZE / 2 - 7)
 SIZE = (WIDTH, HEIGHT)
 
-# Paleta de cores
+
 BG          = (15,  20,  40)
 BOARD_COLOR = (25,  80, 180)
 BOARD_DARK  = (15,  50, 120)
@@ -115,19 +112,15 @@ WIN_OVERLAY = (  0,   0,   0, 160)
 
 def draw_piece(surface, color, light, cx, cy, radius):
     """Desenha peça com efeito 3D (gradiente simulado)."""
-    # Sombra suave
     shadow_surf = pygame.Surface((radius*2+10, radius*2+10), pygame.SRCALPHA)
     pygame.draw.circle(shadow_surf, (0, 0, 0, 80), (radius+5, radius+7), radius)
     surface.blit(shadow_surf, (cx - radius - 5 + 3, cy - radius - 5 + 3))
 
-    # Corpo principal
     pygame.draw.circle(surface, color, (cx, cy), radius)
 
-    # Anel de borda (escurece)
     dark = tuple(max(0, c - 50) for c in color)
     pygame.draw.circle(surface, dark, (cx, cy), radius, 3)
 
-    # Reflexo (brilho no topo-esquerdo)
     highlight_surf = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
     pygame.draw.circle(highlight_surf, (*light, 120),
                        (radius - radius//4, radius - radius//4), radius//3)
@@ -150,9 +143,8 @@ class PopOutGUI:
         self.font_small  = pygame.font.SysFont("Arial", 15)
         self.font_tiny   = pygame.font.SysFont("Arial", 13)
         self.clock = pygame.time.Clock()
-        # Pré-calcular posição do tabuleiro
-        self.bx = BOARD_PADDING  # x inicial do tabuleiro
-        self.by = HEADER_H       # y inicial do tabuleiro
+        self.bx = BOARD_PADDING
+        self.by = HEADER_H
 
     def _board_rect(self):
         return pygame.Rect(self.bx - 6, self.by - 6,
@@ -161,12 +153,10 @@ class PopOutGUI:
     def draw_board(self, game: PopOutGame, message="", pop_mode=False, show_hints=False):
         self.screen.fill(BG)
 
-        # --- HEADER ---
         header_rect = pygame.Rect(0, 0, WIDTH, HEADER_H)
         draw_rounded_rect(self.screen, PANEL_BG, header_rect, radius=0)
         pygame.draw.line(self.screen, PANEL_BORDER, (0, HEADER_H - 1), (WIDTH, HEADER_H - 1), 2)
 
-        # Indicador do jogador atual (bolinha colorida + texto)
         if not game.game_over:
             player_color = P1_COLOR if game.current_player == PLAYER1 else P2_COLOR
             player_light = P1_LIGHT if game.current_player == PLAYER1 else P2_LIGHT
@@ -175,11 +165,9 @@ class PopOutGUI:
             label = self.font_main.render(player_name, True, TEXT_WHITE)
             self.screen.blit(label, (66, 22))
 
-        # Mensagem principal
         msg_label = self.font_main.render(message, True, ACCENT)
         self.screen.blit(msg_label, (18, 62))
 
-        # Modo POP badge
         if pop_mode:
             badge_rect = pygame.Rect(WIDTH - 130, 20, 112, 34)
             draw_rounded_rect(self.screen, (180, 60, 0), badge_rect, radius=8,
@@ -187,19 +175,15 @@ class PopOutGUI:
             badge_label = self.font_small.render("MODO POP", True, (255, 220, 150))
             self.screen.blit(badge_label, (WIDTH - 120, 29))
 
-        # --- TABULEIRO ---
-        # Sombra do tabuleiro
         shadow = pygame.Surface((BOARD_W + 20, BOARD_H + 20), pygame.SRCALPHA)
         shadow.fill((0, 0, 0, 0))
         pygame.draw.rect(shadow, (0, 0, 0, 80), shadow.get_rect(), border_radius=16)
         self.screen.blit(shadow, (self.bx - 10 + 6, self.by - 10 + 8))
 
-        # Fundo do tabuleiro (gradiente simulado com dois rects)
         board_rect = pygame.Rect(self.bx, self.by, BOARD_W, BOARD_H)
         draw_rounded_rect(self.screen, BOARD_COLOR, board_rect, radius=12,
                           border_color=BOARD_LIGHT, border_width=3)
 
-        # Peças e buracos
         for r in range(game.rows):
             for c in range(game.cols):
                 cx = self.bx + int(c * SQUARESIZE + SQUARESIZE / 2)
@@ -207,10 +191,8 @@ class PopOutGUI:
 
                 cell = game.board[r][c]
                 if cell == EMPTY:
-                    # Buraco com sombra interna
                     pygame.draw.circle(self.screen, HOLE_COLOR, (cx, cy), RADIUS)
                     pygame.draw.circle(self.screen, (5, 8, 20), (cx, cy), RADIUS, 3)
-                    # Reflexo sutil no buraco
                     refl = pygame.Surface((RADIUS*2, RADIUS*2), pygame.SRCALPHA)
                     pygame.draw.circle(refl, (255, 255, 255, 18),
                                        (RADIUS - RADIUS//4, RADIUS - RADIUS//4), RADIUS//4)
@@ -220,7 +202,6 @@ class PopOutGUI:
                 elif cell == PLAYER2:
                     draw_piece(self.screen, P2_COLOR, P2_LIGHT, cx, cy, RADIUS)
 
-        # Hints
         if show_hints and not game.game_over:
             if pop_mode:
                 for c in game.get_pop_moves():
@@ -243,7 +224,6 @@ class PopOutGUI:
                         pygame.draw.circle(hint_surf, (*HINT_LIGHT, 220), (RADIUS, RADIUS), 10)
                         self.screen.blit(hint_surf, (cx - RADIUS, cy - RADIUS))
 
-        # --- FOOTER ---
         footer_y = self.by + BOARD_H
         footer_rect = pygame.Rect(0, footer_y, WIDTH, FOOTER_H)
         draw_rounded_rect(self.screen, PANEL_BG, footer_rect, radius=0)
@@ -275,12 +255,10 @@ class PopOutGUI:
             mx, my = pygame.mouse.get_pos()
             self.screen.fill(BG)
 
-            #adiciona opção voltar se necessário
             actual_options = list(options)
             if can_go_back:
                 actual_options.append("Voltar")
 
-            # Painel central
             panel_w = WIDTH - 80
             panel_x = 40
             panel_y = 30
@@ -290,14 +268,12 @@ class PopOutGUI:
             draw_rounded_rect(self.screen, PANEL_BG, panel_rect, radius=16,
                               border_color=PANEL_BORDER, border_width=2)
 
-            # Título
             title_surf = self.font_title.render(title, True, TEXT_WHITE)
             self.screen.blit(title_surf, (panel_x + 24, panel_y + 22))
             pygame.draw.line(self.screen, PANEL_BORDER,
                              (panel_x + 24, panel_y + 58),
                              (panel_x + panel_w - 24, panel_y + 58), 1)
 
-            # Opções
             option_rects = []
             for i, opt in enumerate(actual_options):
                 is_back = can_go_back and i == len(actual_options) - 1
@@ -310,21 +286,18 @@ class PopOutGUI:
                     bg = SELECTED_BG if is_hovered else HOVER_BG
                 else:
                     bg = SELECTED_BG if is_hovered else HOVER_BG
-    
+
                 draw_rounded_rect(self.screen, bg, rect, radius=10,
                                   border_color=ACCENT if is_hovered else PANEL_BORDER,
                                   border_width=2 if is_hovered else 1)
 
-                # Número
                 num_text = "B" if is_back else str(i + 1)
                 num_surf = self.font_main.render(str(i + 1), True, ACCENT)
                 self.screen.blit(num_surf, (rect.x + 16, rect.y + 10))
 
-                # Texto da opção
                 opt_surf = self.font_main.render(opt, True, TEXT_WHITE if is_hovered else TEXT_DIM)
                 self.screen.blit(opt_surf, (rect.x + 46, rect.y + 10))
 
-            # Dica de rodapé
             num_opts = len(actual_options)
             hint = self.font_tiny.render(f"Use o rato ou teclas 1–{num_opts} para selecionar", True, TEXT_DIM)
             self.screen.blit(hint, (panel_x + 24, panel_y + panel_h - 22))
@@ -339,7 +312,7 @@ class PopOutGUI:
                     for i, rect in enumerate(option_rects):
                         if rect.collidepoint(event.pos):
                             if can_go_back and i == len(actual_options) - 1:
-                                return -1 #codigo para voltar
+                                return -1
                             return i + 1
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE and can_go_back:
@@ -375,7 +348,6 @@ class PopOutGUI:
         draw_rounded_rect(self.screen, PANEL_BG, box_rect, radius=18,
                           border_color=color, border_width=3)
 
-        # Peça decorativa
         if winner:
             draw_piece(self.screen, color, light, box_x + 50, box_y + box_h // 2, 22)
 
@@ -438,7 +410,6 @@ class PopOutGUI:
             if game.game_over:
                 break
 
-        # Ecrã final
         self.draw_board(game, "Fim de Jogo", False)
         self._show_end_overlay(game)
 
@@ -464,17 +435,19 @@ def main():
             ai_choice = gui.get_menu_choice("Escolha o Algoritmo de IA",
                                         ["Standard MCTS",
                                             "Heuristic MCTS",
+                                            "High Exploration",
                                             "Progressive Widening",
                                             "ID3 (Árvore de Decisão)"], can_go_back=True)
 
-            if ai_choice == -1: continue  #volta ao menu principal
+            if ai_choice == -1: continue
 
             try:
                 algos = {
                     1: lambda: make_standard_mcts(1000),
                     2: lambda: make_heuristic_mcts(1000),
-                    3: lambda: make_progressive_widening_mcts(1000),
-                    4: lambda: ID3Player.from_dataset(),
+                    3: lambda: make_high_exploration_mcts(1000),
+                    4: lambda: make_progressive_widening_mcts(1000),
+                    5: lambda: ID3Player.from_dataset(),
                 }
                 ai_instance = algos[ai_choice]()
             except FileNotFoundError as exc:
