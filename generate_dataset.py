@@ -10,9 +10,6 @@ import os
 from popout_game import PopOutGame, PLAYER1, PLAYER2
 from mcts import make_heuristic_mcts, make_standard_mcts
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-
 OUTPUT_CSV    = os.path.join('datasets', 'popout_dataset.csv')
 N_GAMES       = 100
 MCTS_ITERS    = 400
@@ -30,18 +27,6 @@ def generate(n_games: int = N_GAMES,
              output_csv: str = OUTPUT_CSV,
              variant: str = VARIANT,
              seed: int | None = 42) -> int:
-    """
-    Gera o dataset e devolve o número de amostras gravadas.
-
-    Parameters
-    ----------
-    variant : 'heuristic' ou 'standard' — controla a política do MCTS
-              que joga ambos os lados em self-play.
-    seed    : seed do RNG para reprodutibilidade (None desactiva).
-
-    O estado é codificado da perspetiva do jogador atual para tornar o
-    dataset invariante ao jogador.
-    """
     if variant not in VARIANTS:
         raise ValueError(f"variant deve ser um de {list(VARIANTS)}; recebi {variant!r}")
 
@@ -68,7 +53,6 @@ def generate(n_games: int = N_GAMES,
             if move is None:
                 break
 
-            # Gravar (estado, jogada) ANTES de aplicar o movimento
             state_enc  = game.encode_state()
             move_label = f'{move[0]}_{move[1]}'
             rows.append(state_enc + [move_label])
@@ -93,9 +77,6 @@ def generate(n_games: int = N_GAMES,
     print(f"\nDataset gravado em '{output_csv}'")
     print(f"  {len(rows)} amostras  |  {len(set(r[-1] for r in rows))} jogadas únicas  |  {elapsed:.1f}s")
     return len(rows)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     n_games = int(sys.argv[1]) if len(sys.argv) > 1 else N_GAMES
