@@ -8,7 +8,6 @@ from popout_game import PopOutGame, PLAYER1, PLAYER2, EMPTY
 from mcts import (make_standard_mcts, make_heuristic_mcts,
                   make_progressive_widening_mcts, make_high_exploration_mcts)
 from decision_tree import ID3Tree
-1
 
 
 DATASET_CSV   = os.path.join('datasets', 'popout_dataset.csv')
@@ -16,7 +15,6 @@ FEATURE_NAMES = [f'cell_{r}_{c}' for r in range(6) for c in range(7)]
 
 
 def _parse_move_label(label: str) -> tuple | None:
-    """Convert 'drop_3' / 'pop_1' into ('drop', 3) / ('pop', 1)."""
     try:
         mtype, col = label.split('_')
         return (mtype, int(col))
@@ -37,11 +35,6 @@ def _load_dataset(path: str = DATASET_CSV):
 
 
 class ID3Player:
-    """
-    Adapter that exposes `get_best_move(game)` like an MCTS instance, but
-    delegates to a trained ID3 tree. If the predicted move is illegal in the
-    current game state, falls back to a uniformly random legal move.
-    """
     def __init__(self, tree: ID3Tree, name: str = 'ID3-Tree'):
         self.tree = tree
         self.name = name
@@ -111,7 +104,6 @@ WIN_OVERLAY = (  0,   0,   0, 160)
 
 
 def draw_piece(surface, color, light, cx, cy, radius):
-    """Desenha peça com efeito 3D (gradiente simulado)."""
     shadow_surf = pygame.Surface((radius*2+10, radius*2+10), pygame.SRCALPHA)
     pygame.draw.circle(shadow_surf, (0, 0, 0, 80), (radius+5, radius+7), radius)
     surface.blit(shadow_surf, (cx - radius - 5 + 3, cy - radius - 5 + 3))
@@ -248,7 +240,6 @@ class PopOutGUI:
         pygame.display.update()
 
     def get_menu_choice(self, title, options, can_go_back = False):
-        """Menu visual com highlight de hover e opção de voltar."""
         option_rects = []
 
         while True:
@@ -325,7 +316,6 @@ class PopOutGUI:
                             return val
 
     def _show_end_overlay(self, game):
-        """Overlay semitransparente no fim de jogo."""
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 120))
         self.screen.blit(overlay, (0, 0))

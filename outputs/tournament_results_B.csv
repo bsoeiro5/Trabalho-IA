@@ -1,0 +1,9 @@
+,MCTS-Standard,MCTS-PW(4),MCTS-Heuristic
+MCTS-Standard,0.0,42.0,16.0
+MCTS-PW(4),8.0,0.0,3.0
+MCTS-Heuristic,39.0,44.0,0.0
+
+variant,wins,games,win_pct
+MCTS-Standard,58.0,100,58.0
+MCTS-PW(4),11.0,100,11.0
+MCTS-Heuristic,83.0,100,83.0

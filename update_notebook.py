@@ -25,7 +25,6 @@ display(Image('outputs/winrates.png'))
 '''
 
 nb = nbformat.read(NB_PATH, as_version=4)
-# append cells at the end
 nb.cells.append(new_markdown_cell(md_text))
 nb.cells.append(new_code_cell(code_text))
 

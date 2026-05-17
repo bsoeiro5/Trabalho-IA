@@ -67,7 +67,6 @@ def generate(n_games: int = N_GAMES,
             print(f"  [{game_idx+1:>4}/{n_games}] {len(rows):>6} amostras  "
                   f"({elapsed:.1f}s decorridos)")
 
-    # Gravar CSV
     with open(output_csv, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(FEATURE_NAMES + ['move'])

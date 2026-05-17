@@ -7,11 +7,9 @@ class ID3Tree:
     def __init__(self, max_depth: int | None = None, min_samples_split: int = 2):
         self.max_depth         = max_depth
         self.min_samples_split = min_samples_split
-        self.tree              = None          # raiz da árvore (dict ou label)
-        self.attributes        = None          # nomes dos atributos
-        self.continuous_attrs  = set()         # índices de atributos contínuos
-
-    # ── Treino ─────────────────────────────────────────────────────────────
+        self.tree              = None
+        self.attributes        = None
+        self.continuous_attrs  = set()
 
     def fit(self, data: list, labels: list,
             attribute_names: list | None = None,
@@ -29,8 +27,6 @@ class ID3Tree:
 
     def predict(self, data: list) -> list:
         return [self.predict_one(row) for row in data]
-
-    # ── Métricas ────────────────────────────────────────────────────────────
 
     @staticmethod
     def accuracy(y_true: list, y_pred: list) -> float:
@@ -56,48 +52,28 @@ class ID3Tree:
 
     @staticmethod
     def confusion_matrix(y_true: list, y_pred: list) -> dict:
-        """
-        Devolve uma matriz de confusão como dict aninhado:
-            confusion_matrix[true_class][pred_class] = count
-        """
         classes = sorted(set(y_true) | set(y_pred))
         cm = {c: {c2: 0 for c2 in classes} for c in classes}
         for t, p in zip(y_true, y_pred):
             cm[t][p] += 1
         return cm
 
-    # ── Informação sobre a árvore ───────────────────────────────────────────
-
     def count_nodes(self) -> int:
-        """Conta o total de nós (internos + folhas) na árvore."""
         return self._count_nodes(self.tree)
 
     def depth(self) -> int:
-        """Profundidade real da árvore (0 = apenas raiz/folha)."""
         return self._tree_depth(self.tree)
 
-    # alias para compatibilidade com código que usa `get_depth()`
     get_depth = depth
-
-    # ── Visualização ────────────────────────────────────────────────────────
 
     def print_tree(self, max_levels: int | None = None,
                    max_depth: int | None = None) -> None:
-        """
-        Imprime a árvore de forma legível no terminal.
-
-        max_levels e max_depth são aliases (qualquer um pode ser passado).
-        """
         limit = max_depth if max_depth is not None else max_levels
         self._print_node(self.tree, indent=0, branch_label='', max_levels=limit)
 
-    # ── Internos — construção ───────────────────────────────────────────────
-
     def _build(self, data: list, labels: list,
                available_attrs: list, depth: int) -> object:
-        """Construção recursiva da árvore (devolve dict ou label-folha)."""
 
-        # ── Casos base ──────────────────────────────────────────────────────
         majority = Counter(labels).most_common(1)[0][0]
 
         if len(set(labels)) == 1:
@@ -108,7 +84,6 @@ class ID3Tree:
                 or len(data) < self.min_samples_split):
             return majority
 
-        # ── Escolher o melhor atributo ──────────────────────────────────────
         best_attr, best_gain, best_threshold = None, -1.0, None
 
         for attr_idx in available_attrs:
@@ -124,7 +99,6 @@ class ID3Tree:
 
         attr_name = self.attributes[best_attr]
 
-        # ── Divisão por atributo contínuo (binária) ─────────────────────────
         if best_attr in self.continuous_attrs and best_threshold is not None:
             thr     = best_threshold
             thr_str = str(round(thr, 3))
@@ -145,7 +119,7 @@ class ID3Tree:
                 node[key_le] = self._build(
                     [data[i] for i in left_idx],
                     [labels[i] for i in left_idx],
-                    available_attrs,   # atributo contínuo pode ser reutilizado
+                    available_attrs,
                     depth + 1)
             if right_idx:
                 node[key_gt] = self._build(
@@ -155,7 +129,6 @@ class ID3Tree:
                     depth + 1)
             return node
 
-        # ── Divisão por atributo categórico ─────────────────────────────────
         values          = set(row[best_attr] for row in data)
         remaining_attrs = [a for a in available_attrs if a != best_attr]
 
@@ -177,8 +150,6 @@ class ID3Tree:
                 node[val] = majority
         return node
 
-    # ── Internos — predição ─────────────────────────────────────────────────
-
     def _traverse(self, node: object, example: list) -> object:
         if not isinstance(node, dict):
             return node
@@ -197,8 +168,6 @@ class ID3Tree:
         if child is None:
             return node.get('_default')
         return self._traverse(child, example)
-
-    # ── Internos — ganho de informação ─────────────────────────────────────
 
     @staticmethod
     def _entropy(labels: list) -> float:
@@ -220,10 +189,6 @@ class ID3Tree:
 
     def _info_gain_continuous(self, data: list, labels: list,
                               attr_idx: int) -> tuple[float, object]:
-        """
-        Avalia todos os limiares possíveis (pontos médios entre valores
-        consecutivos) e devolve o que maximiza o ganho de informação.
-        """
         parent_H = self._entropy(labels)
         vals     = sorted(set(row[attr_idx] for row in data))
         if len(vals) <= 1:
@@ -245,8 +210,6 @@ class ID3Tree:
                 best_gain, best_thr = gain, thr
 
         return best_gain, best_thr
-
-    # ── Internos — utilitários ──────────────────────────────────────────────
 
     @staticmethod
     def _is_meta_key(key) -> bool:
